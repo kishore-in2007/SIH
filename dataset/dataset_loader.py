@@ -22,53 +22,40 @@ def load_and_standardize_audio(file_path: str, target_sr: int = TARGET_SAMPLE_RA
     and crops or circular-pads to max_samples.
     """
     try:
-        # Load audio using soundfile (fast) with librosa fallback
         try:
             audio, sr = sf.read(file_path, dtype='float32')
         except Exception:
             audio, sr = librosa.load(file_path, sr=target_sr, mono=True)
 
-        # Convert to mono if multi-channel
         if audio.ndim > 1:
             audio = np.mean(audio, axis=1)
 
-        # Resample if needed
         if sr != target_sr:
             audio = librosa.resample(audio, orig_sr=sr, target_sr=target_sr)
 
-        # Pad or Crop to fixed length (64,600 samples)
         length = len(audio)
         if length < max_samples:
-            # Circular repeat padding
-            repeat_factor = int(np.ceil(max_samples / length))
+            repeat_factor = int(np.ceil(max_samples / max(length, 1)))
             audio = np.tile(audio, repeat_factor)[:max_samples]
         elif length > max_samples:
             if is_train:
-                # Random crop during training
                 max_offset = length - max_samples
                 offset = random.randint(0, max_offset)
                 audio = audio[offset:offset + max_samples]
             else:
-                # Center crop during eval/test
                 offset = (length - max_samples) // 2
                 audio = audio[offset:offset + max_samples]
 
-        # Normalize waveform amplitude
         max_val = np.max(np.abs(audio))
         if max_val > 1e-6:
             audio = audio / max_val
 
         return audio.astype(np.float32)
 
-    except Exception as e:
-        # Return silence if corrupt
+    except Exception:
         return np.zeros(max_samples, dtype=np.float32)
 
 class AudioSpoofDataset(Dataset):
-    """
-    PyTorch Dataset for Deepfake Voice / Anti-Spoofing Detection
-    Labels: 0 = Bonafide (Real/Human), 1 = Spoof (Deepfake/Cloned/Synthetic)
-    """
     def __init__(self, samples: List[Tuple[str, int]], target_sr: int = TARGET_SAMPLE_RATE, num_samples: int = TARGET_NUM_SAMPLES, is_train: bool = True):
         self.samples = samples
         self.target_sr = target_sr
@@ -87,7 +74,6 @@ class AudioSpoofDataset(Dataset):
             is_train=self.is_train
         )
         
-        # Audio augmentation during training (Gaussian noise & volume scaling)
         if self.is_train:
             if random.random() < 0.3:
                 noise = np.random.normal(0, 0.005, waveform.shape).astype(np.float32)
@@ -100,37 +86,38 @@ class AudioSpoofDataset(Dataset):
         tensor_label = torch.tensor(label, dtype=torch.long)
         return tensor_waveform, tensor_label
 
-def parse_asvspoof_protocol(protocol_file: str, audio_dir: str) -> List[Tuple[str, int]]:
+def parse_asvspoof_protocols(root_dir: str) -> List[Tuple[str, int]]:
     """
-    Parses ASVspoof protocol files (e.g. ASVspoof2019.LA.cm.train.trn.txt)
-    Format: SPEAKER_ID AUDIO_FILE_NAME - SYSTEM_ID KEY (bonafide / spoof)
+    Finds all protocol text files and maps them directly to audio files in the tree.
     """
     samples = []
-    if not os.path.isfile(protocol_file):
-        return samples
+    protocol_files = glob.glob(os.path.join(root_dir, "**", "*.txt"), recursive=True)
+    
+    # Build fast filename lookup dictionary for all audio files in root_dir
+    audio_map = {}
+    for ext in ['*.flac', '*.wav', '*.mp3', '*.ogg']:
+        for path in glob.glob(os.path.join(root_dir, "**", ext), recursive=True):
+            base_key = os.path.splitext(os.path.basename(path))[0]
+            audio_map[base_key] = path
 
-    with open(protocol_file, 'r', encoding='utf-8') as f:
-        for line in f:
-            parts = line.strip().split()
-            if len(parts) >= 5:
-                audio_id = parts[1]
-                key = parts[4].lower()
-                label = 0 if key == 'bonafide' else 1
-                
-                # Check for .flac or .wav extension
-                for ext in ['.flac', '.wav']:
-                    path = os.path.join(audio_dir, audio_id + ext)
-                    if os.path.exists(path):
-                        samples.append((path, label))
-                        break
+    for pfile in protocol_files:
+        try:
+            with open(pfile, 'r', encoding='utf-8', errors='ignore') as f:
+                for line in f:
+                    parts = line.strip().split()
+                    if len(parts) >= 5:
+                        audio_id = parts[1]
+                        key = parts[4].lower()
+                        if key in ['bonafide', 'spoof']:
+                            label = 0 if key == 'bonafide' else 1
+                            if audio_id in audio_map:
+                                samples.append((audio_map[audio_id], label))
+        except Exception:
+            continue
+
     return samples
 
 def scan_directory_by_folder_names(root_dir: str) -> List[Tuple[str, int]]:
-    """
-    Recursively scans directory and determines label based on folder or filename tags
-    Real keywords: real, bonafide, genuine, human
-    Spoof keywords: fake, spoof, clone, tts, vc, deepfake
-    """
     samples = []
     supported_exts = ('.wav', '.flac', '.mp3', '.ogg', '.m4a')
     
@@ -143,7 +130,6 @@ def scan_directory_by_folder_names(root_dir: str) -> List[Tuple[str, int]]:
                 full_path = os.path.join(root, f)
                 path_lower = full_path.lower()
                 
-                # Classify label
                 is_spoof = any(kw in path_lower for kw in spoof_keywords)
                 is_real = any(kw in path_lower for kw in real_keywords)
 
@@ -151,63 +137,55 @@ def scan_directory_by_folder_names(root_dir: str) -> List[Tuple[str, int]]:
                     samples.append((full_path, 1))
                 elif is_real and not is_spoof:
                     samples.append((full_path, 0))
-                elif is_spoof and is_real:
-                    # Specific subfolder priority
-                    parent = os.path.basename(root).lower()
-                    if any(kw in parent for kw in spoof_keywords):
-                        samples.append((full_path, 1))
-                    elif any(kw in parent for kw in real_keywords):
-                        samples.append((full_path, 0))
     return samples
 
-def build_dataset_from_kagglehub(dataset_paths_dict: Dict[str, str]) -> Dict[str, List[Tuple[str, int]]]:
+def build_dataset_from_kagglehub(dataset_paths_dict: Dict[str, str], max_samples_per_class: int = 15000) -> List[Tuple[str, int]]:
     """
-    Scans and indexes all downloaded Kaggle datasets into a unified list of samples.
+    Scans and indexes downloaded Kaggle datasets into a balanced list of samples.
     """
     all_samples = []
     
     print("--- Indexing Datasets ---")
     for name, path in dataset_paths_dict.items():
         if not path or not os.path.exists(path):
-            print(f"Skipping {name}: Path not found ({path})")
             continue
             
         print(f"Scanning dataset: {name} in {path}")
-        ds_samples = []
-
-        # 1. Check for ASVspoof protocols
-        protocol_files = glob.glob(os.path.join(path, "**", "*.txt"), recursive=True)
-        for pfile in protocol_files:
-            pdir = os.path.dirname(pfile)
-            # Check candidate audio directories
-            for candidate in [pdir, os.path.join(pdir, "flac"), os.path.join(path, "flac"), path]:
-                scanned = parse_asvspoof_protocol(pfile, candidate)
-                if scanned:
-                    ds_samples.extend(scanned)
-                    print(f"  Parsed {len(scanned)} items from ASVspoof protocol: {os.path.basename(pfile)}")
-
-        # 2. Fallback to folder-based classification
+        ds_samples = parse_asvspoof_protocols(path)
         if not ds_samples:
             ds_samples = scan_directory_by_folder_names(path)
-            print(f"  Found {len(ds_samples)} audio files via folder heuristic")
 
         all_samples.extend(ds_samples)
+        print(f"  Indexed {len(ds_samples)} samples from {name}")
 
-    # Remove duplicates
     unique_samples = list({s[0]: s for s in all_samples}.values())
-    random.seed(42)
-    random.shuffle(unique_samples)
-
-    real_count = sum(1 for s in unique_samples if s[1] == 0)
-    spoof_count = sum(1 for s in unique_samples if s[1] == 1)
-    print(f"\nTotal Unified Samples: {len(unique_samples)} (Real/Bonafide: {real_count}, Spoof/Deepfake: {spoof_count})")
     
-    return unique_samples
+    # Class balancing
+    bonafide = [s for s in unique_samples if s[1] == 0]
+    spoof = [s for s in unique_samples if s[1] == 1]
+    
+    random.seed(42)
+    random.shuffle(bonafide)
+    random.shuffle(spoof)
+
+    # Balance classes so model learns robust decision boundaries
+    if len(bonafide) > 0 and len(spoof) > 0:
+        target_count = min(max(len(bonafide), len(spoof)), max_samples_per_class)
+        # If one class is smaller, upsample or cap proportionally
+        sampled_bonafide = bonafide[:target_count]
+        sampled_spoof = spoof[:target_count]
+        final_samples = sampled_bonafide + sampled_spoof
+    else:
+        final_samples = unique_samples[:max_samples_per_class * 2]
+
+    random.shuffle(final_samples)
+    real_count = sum(1 for s in final_samples if s[1] == 0)
+    spoof_count = sum(1 for s in final_samples if s[1] == 1)
+    print(f"\nFinal Balanced Training Set: {len(final_samples)} (Real/Bonafide: {real_count}, Spoof/Deepfake: {spoof_count})")
+    
+    return final_samples
 
 def get_dataloaders(samples: List[Tuple[str, int]], batch_size: int = 16, val_split: float = 0.15, test_split: float = 0.15, num_workers: int = 2):
-    """
-    Splits samples into Train / Validation / Test sets and returns PyTorch DataLoaders.
-    """
     n_total = len(samples)
     if n_total == 0:
         raise ValueError("No audio samples found to create DataLoader.")
