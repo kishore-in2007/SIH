@@ -1,0 +1,20 @@
+{
+  "id": "kishoretheone/shieldvoice-deepfake-voice-training",
+  "title": "ShieldVoice Deepfake Voice Training",
+  "code_file": "kaggle_shieldvoice_training.ipynb",
+  "language": "python",
+  "kernel_type": "notebook",
+  "is_private": "true",
+  "enable_gpu": "true",
+  "enable_tpu": "false",
+  "enable_internet": "true",
+  "dataset_sources": [
+    "awsaf49/asvpoof-2019-dataset",
+    "birdy654/deep-voice-deepfake-voice-recognition",
+    "mohammedabdeldayem/avsspoof-2021",
+    "trapka/mlaadthe-multi-languagaudioanti-spoofing-dataset"
+  ],
+  "competition_sources": [],
+  "kernel_sources": [],
+  "model_sources": []
+}
