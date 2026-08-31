@@ -33,6 +33,14 @@ def load_and_standardize_audio(file_path: str, target_sr: int = TARGET_SAMPLE_RA
         if sr != target_sr:
             audio = librosa.resample(audio, orig_sr=sr, target_sr=target_sr)
 
+        # Trim leading and trailing silence (VAD)
+        try:
+            non_silent_audio, _ = librosa.effects.trim(audio, top_db=25)
+            if len(non_silent_audio) >= target_sr * 0.5:  # At least 0.5s of speech
+                audio = non_silent_audio
+        except Exception:
+            pass
+
         length = len(audio)
         if length < max_samples:
             repeat_factor = int(np.ceil(max_samples / max(length, 1)))
@@ -46,9 +54,12 @@ def load_and_standardize_audio(file_path: str, target_sr: int = TARGET_SAMPLE_RA
                 offset = (length - max_samples) // 2
                 audio = audio[offset:offset + max_samples]
 
+        # Robust peak normalization
         max_val = np.max(np.abs(audio))
-        if max_val > 1e-6:
+        if max_val > 1e-4:
             audio = audio / max_val
+        elif max_val > 1e-6:
+            audio = audio / (max_val + 1e-6)
 
         return audio.astype(np.float32)
 
