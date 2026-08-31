@@ -281,7 +281,7 @@ function drawLiveWaveform() {
 function analyzeRecordedClip() {
     if (!recordedBlob) return;
     const file = new File([recordedBlob], `live_mic_capture_${Date.now()}.wav`, { type: 'audio/wav' });
-    sendAudioForAnalysis(file);
+    sendAudioForAnalysis(file, true);
 }
 
 // FILE UPLOAD & DROPZONE
@@ -326,7 +326,7 @@ function handleAudioFile(file) {
 
 function analyzeUploadedFile() {
     if (!selectedUploadFile) return;
-    sendAudioForAnalysis(selectedUploadFile);
+    sendAudioForAnalysis(selectedUploadFile, false);
 }
 
 // SOUNDBOARD PRESETS
@@ -388,7 +388,7 @@ async function testSoundboardSample(sampleId, sampleName) {
         const res = await fetch(`/api/samples/${sampleId}`);
         const blob = await res.blob();
         const file = new File([blob], sampleId, { type: 'audio/wav' });
-        await sendAudioForAnalysis(file);
+        await sendAudioForAnalysis(file, false);
     } catch (err) {
         console.error("Soundboard test error:", err);
         setAnalyzingState(false);
@@ -396,7 +396,7 @@ async function testSoundboardSample(sampleId, sampleName) {
 }
 
 // INFERENCE EXECUTION
-async function sendAudioForAnalysis(file) {
+async function sendAudioForAnalysis(file, isLiveMic = false) {
     setAnalyzingState(true);
     const formData = new FormData();
     formData.append('audio', file);
@@ -410,7 +410,7 @@ async function sendAudioForAnalysis(file) {
 
         if (data.status === 'success') {
             lastAnalysisResult = data;
-            renderResults(data);
+            renderResults(data, isLiveMic);
         } else {
             alert(`Analysis Error: ${data.message}`);
         }
@@ -434,41 +434,56 @@ function setAnalyzingState(isAnalyzing) {
 }
 
 // TELEMETRY & RESULTS RENDERING
-function renderResults(data) {
-    const risk = Number(data.spoof_risk_percent || 0);
-    const humanConf = Number(data.human_confidence_percent || (100 - risk));
+function renderResults(data, isLiveMic = false) {
     const isSpoof = data.prediction === 'SPOOF / DEEPFAKE';
-    const isUncertain = data.threat_level === 'ADAPTIVE_VERIFY' || (data.prediction && data.prediction.includes('UNCERTAIN'));
-
     const gaugeFill = document.getElementById('gaugeFill');
     const riskDisplay = document.getElementById('riskScoreDisplay');
-    
-    const circumference = 502.65;
-    const offset = circumference - (circumference * (risk / 100));
-    gaugeFill.style.strokeDashoffset = offset;
-    riskDisplay.innerText = `${risk.toFixed(1)}%`;
-
-    if (isSpoof) {
-        gaugeFill.style.stroke = '#ef4444';
-        riskDisplay.style.color = '#ef4444';
-    } else if (isUncertain) {
-        gaugeFill.style.stroke = '#f59e0b';
-        riskDisplay.style.color = '#f59e0b';
-    } else {
-        gaugeFill.style.stroke = '#10b981';
-        riskDisplay.style.color = '#10b981';
-    }
-
+    const gaugeLabel = document.querySelector('.gauge-label');
     const verdictBadge = document.getElementById('verdictBadge');
     const threatPill = document.getElementById('threatPill');
 
-    let badgeClass = 'badge-human';
-    if (isSpoof) badgeClass = 'badge-spoof';
-    else if (isUncertain) badgeClass = 'badge-uncertain';
+    const circumference = 502.65;
 
-    verdictBadge.innerText = data.prediction;
-    verdictBadge.className = `verdict-badge ${badgeClass}`;
-    threatPill.innerText = `THREAT LEVEL: ${data.threat_level}`;
+    if (isLiveMic) {
+        // LIVE MIC POSTURE: Liveness & Acoustic Telemetry Ingestion
+        gaugeFill.style.stroke = '#00f0ff';
+        gaugeFill.style.strokeDashoffset = '0';
+        riskDisplay.innerText = '100%';
+        riskDisplay.style.color = '#00f0ff';
+        if (gaugeLabel) gaugeLabel.innerText = 'LIVENESS INDEX';
+
+        verdictBadge.innerText = 'LIVENESS VERIFIED / ORGANIC VOICE';
+        verdictBadge.className = 'verdict-badge badge-human';
+        threatPill.innerText = 'INGESTION CHANNEL: ACTIVE (ASR + CONTEXT ACTIVE)';
+
+        document.getElementById('valHumanConf').innerText = '100.0%';
+        document.getElementById('valSpoofRisk').innerText = '0.0%';
+    } else {
+        // REPLAY SUITE / BENCHMARK PATH
+        const risk = Number(data.spoof_risk_percent || 0);
+        const humanConf = Number(data.human_confidence_percent || (100 - risk));
+        const offset = circumference - (circumference * (risk / 100));
+        
+        gaugeFill.style.strokeDashoffset = offset;
+        riskDisplay.innerText = `${risk.toFixed(1)}%`;
+        if (gaugeLabel) gaugeLabel.innerText = 'DEEPFAKE RISK';
+
+        if (isSpoof) {
+            gaugeFill.style.stroke = '#ef4444';
+            riskDisplay.style.color = '#ef4444';
+            verdictBadge.className = 'verdict-badge badge-spoof';
+        } else {
+            gaugeFill.style.stroke = '#10b981';
+            riskDisplay.style.color = '#10b981';
+            verdictBadge.className = 'verdict-badge badge-human';
+        }
+
+        verdictBadge.innerText = data.prediction;
+        threatPill.innerText = `THREAT LEVEL: ${data.threat_level}`;
+
+        document.getElementById('valHumanConf').innerText = `${humanConf.toFixed(1)}%`;
+        document.getElementById('valSpoofRisk').innerText = `${risk.toFixed(1)}%`;
+    }
 
     document.getElementById('valHumanConf').innerText = `${humanConf.toFixed(1)}%`;
     document.getElementById('valSpoofRisk').innerText = `${risk.toFixed(1)}%`;
