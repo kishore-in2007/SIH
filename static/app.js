@@ -1,0 +1,432 @@
+/**
+ * ShieldVoice (SIH26104) - Live Interactive Testing Studio Frontend Logic
+ * Implements Web Audio API microphone capture, visualizer, drag-and-drop, and real-time inference telemetry.
+ */
+
+// State
+let currentTab = 'record';
+let mediaStream = null;
+let mediaRecorder = null;
+let audioChunks = [];
+let recordedBlob = null;
+let recordingInterval = null;
+let recordingSeconds = 0;
+let isRecording = false;
+
+let audioContext = null;
+let analyser = null;
+let visualizerAnimationId = null;
+
+let selectedUploadFile = null;
+let lastAnalysisResult = null;
+
+document.addEventListener('DOMContentLoaded', () => {
+    initVisualizerCanvas();
+    loadSoundboard();
+    setupDropzone();
+});
+
+// TAB NAVIGATION
+function switchTab(tabId) {
+    currentTab = tabId;
+    document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+
+    const activeBtn = document.getElementById(`tab-${tabId}`);
+    const activeView = document.getElementById(`view-${tabId}`);
+
+    if (activeBtn) activeBtn.classList.add('active');
+    if (activeView) activeView.classList.add('active');
+
+    // Pause recording if user leaves record tab
+    if (tabId !== 'record' && isRecording) {
+        toggleRecording();
+    }
+}
+
+// MICROPHONE RECORDING & WEBAUDIO VISUALIZER
+function initVisualizerCanvas() {
+    const canvas = document.getElementById('micCanvas');
+    const ctx = canvas.getContext('2d');
+    
+    // Initial idle animation
+    let phase = 0;
+    function drawIdle() {
+        if (isRecording) return;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = 'rgba(0, 240, 255, 0.2)';
+        ctx.beginPath();
+        
+        const sliceWidth = canvas.width / 50;
+        let x = 0;
+        
+        for (let i = 0; i < 50; i++) {
+            const v = Math.sin(phase + i * 0.2) * 8;
+            const y = (canvas.height / 2) + v;
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+            x += sliceWidth;
+        }
+        ctx.stroke();
+        phase += 0.04;
+        requestAnimationFrame(drawIdle);
+    }
+    drawIdle();
+}
+
+async function toggleRecording() {
+    const btnRecord = document.getElementById('btnRecord');
+    const btnRecordText = document.getElementById('btnRecordText');
+    const micStatus = document.getElementById('micStatus');
+    const btnAnalyze = document.getElementById('btnAnalyzeRec');
+    const playback = document.getElementById('recordedAudioPlayback');
+
+    if (!isRecording) {
+        // START RECORDING
+        try {
+            mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            audioChunks = [];
+            
+            // Web Audio Analyser
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const source = audioContext.createMediaStreamSource(mediaStream);
+            analyser = audioContext.createAnalyser();
+            analyser.fftSize = 256;
+            source.connect(analyser);
+
+            mediaRecorder = new MediaRecorder(mediaStream);
+            mediaRecorder.ondataavailable = (e) => {
+                if (e.data.size > 0) audioChunks.push(e.data);
+            };
+
+            mediaRecorder.onstop = () => {
+                recordedBlob = new Blob(audioChunks, { type: 'audio/wav' });
+                playback.src = URL.createObjectURL(recordedBlob);
+                playback.classList.remove('hidden');
+                btnAnalyze.disabled = false;
+                micStatus.innerText = 'Audio Ready for Analysis';
+                micStatus.style.color = '#10b981';
+            };
+
+            mediaRecorder.start();
+            isRecording = true;
+
+            // UI updates
+            btnRecord.classList.add('recording');
+            btnRecordText.innerText = 'Stop Recording';
+            micStatus.innerText = '● LIVE RECORDING ACTIVE...';
+            micStatus.style.color = '#ef4444';
+            btnAnalyze.disabled = true;
+
+            // Timer
+            recordingSeconds = 0;
+            updateTimerDisplay();
+            recordingInterval = setInterval(() => {
+                recordingSeconds++;
+                updateTimerDisplay();
+                // Max 10 seconds auto-stop
+                if (recordingSeconds >= 10) toggleRecording();
+            }, 1000);
+
+            drawLiveWaveform();
+        } catch (err) {
+            console.error("Microphone access error:", err);
+            alert("Could not access microphone. Please check browser permissions.");
+        }
+    } else {
+        // STOP RECORDING
+        if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+            mediaRecorder.stop();
+        }
+        if (mediaStream) {
+            mediaStream.getTracks().forEach(track => track.stop());
+        }
+        clearInterval(recordingInterval);
+        isRecording = false;
+
+        btnRecord.classList.remove('recording');
+        btnRecordText.innerText = 'Record Again';
+    }
+}
+
+function updateTimerDisplay() {
+    const mins = Math.floor(recordingSeconds / 60).toString().padStart(2, '0');
+    const secs = (recordingSeconds % 60).toString().padStart(2, '0');
+    document.getElementById('recTimer').innerText = `${mins}:${secs}`;
+}
+
+function drawLiveWaveform() {
+    if (!isRecording || !analyser) return;
+
+    const canvas = document.getElementById('micCanvas');
+    const ctx = canvas.getContext('2d');
+    const bufferLength = analyser.frequencyBinCount;
+    const dataArray = new Uint8Array(bufferLength);
+
+    function render() {
+        if (!isRecording) return;
+        requestAnimationFrame(render);
+        analyser.getByteTimeDomainData(dataArray);
+
+        ctx.fillStyle = '#060911';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        ctx.lineWidth = 2.5;
+        ctx.strokeStyle = '#00f0ff';
+        ctx.shadowBlur = 10;
+        ctx.shadowColor = '#00f0ff';
+        ctx.beginPath();
+
+        const sliceWidth = canvas.width / bufferLength;
+        let x = 0;
+
+        for (let i = 0; i < bufferLength; i++) {
+            const v = dataArray[i] / 128.0;
+            const y = v * (canvas.height / 2);
+
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+            x += sliceWidth;
+        }
+
+        ctx.lineTo(canvas.width, canvas.height / 2);
+        ctx.stroke();
+    }
+    render();
+}
+
+function analyzeRecordedClip() {
+    if (!recordedBlob) return;
+    const file = new File([recordedBlob], `live_mic_capture_${Date.now()}.wav`, { type: 'audio/wav' });
+    sendAudioForAnalysis(file);
+}
+
+// FILE UPLOAD & DROPZONE
+function setupDropzone() {
+    const dropzone = document.getElementById('dropZone');
+    ['dragenter', 'dragover'].forEach(name => {
+        dropzone.addEventListener(name, (e) => {
+            e.preventDefault();
+            dropzone.classList.add('dragover');
+        });
+    });
+    ['dragleave', 'drop'].forEach(name => {
+        dropzone.addEventListener(name, (e) => {
+            e.preventDefault();
+            dropzone.classList.remove('dragover');
+        });
+    });
+    dropzone.addEventListener('drop', (e) => {
+        const files = e.dataTransfer.files;
+        if (files.length > 0) {
+            handleAudioFile(files[0]);
+        }
+    });
+}
+
+function handleFileSelected(event) {
+    const files = event.target.files;
+    if (files.length > 0) {
+        handleAudioFile(files[0]);
+    }
+}
+
+function handleAudioFile(file) {
+    selectedUploadFile = file;
+    document.getElementById('previewFileName').innerText = file.name;
+    document.getElementById('previewFileSize').innerText = (file.size / (1024 * 1024)).toFixed(2) + ' MB';
+    
+    const player = document.getElementById('fileAudioPlayer');
+    player.src = URL.createObjectURL(file);
+    document.getElementById('filePreviewCard').classList.remove('hidden');
+}
+
+function analyzeUploadedFile() {
+    if (!selectedUploadFile) return;
+    sendAudioForAnalysis(selectedUploadFile);
+}
+
+// SOUNDBOARD PRESETS
+async function loadSoundboard() {
+    try {
+        const res = await fetch('/api/samples');
+        const data = await res.json();
+        if (data.status === 'success') {
+            renderSoundboardCards(data.samples);
+        }
+    } catch (err) {
+        console.error("Failed to load soundboard samples:", err);
+    }
+}
+
+function renderSoundboardCards(samples) {
+    const container = document.getElementById('soundboardGrid');
+    container.innerHTML = '';
+
+    samples.forEach(sample => {
+        const isHuman = sample.category === 'human';
+        const card = document.createElement('div');
+        card.className = `sound-card category-${sample.category}`;
+        card.innerHTML = `
+            <div>
+                <div class="sound-card-header">
+                    <span class="sound-tag ${isHuman ? 'human' : 'ai'}">
+                        ${isHuman ? '🟢 GENUINE HUMAN' : '🔴 AI DEEPFAKE'}
+                    </span>
+                </div>
+                <h4>${sample.name}</h4>
+                <p>${sample.description}</p>
+            </div>
+            <div class="sound-card-actions">
+                <button class="btn-sound-play" onclick="playSoundboardSample('/api/samples/${sample.id}')">
+                    ▶ Play
+                </button>
+                <button class="btn-sound-test" onclick="testSoundboardSample('${sample.id}', '${sample.name}')">
+                    ⚡ Instant Test
+                </button>
+            </div>
+        `;
+        container.appendChild(card);
+    });
+}
+
+let activeAudio = null;
+function playSoundboardSample(url) {
+    if (activeAudio) {
+        activeAudio.pause();
+    }
+    activeAudio = new Audio(url);
+    activeAudio.play();
+}
+
+async function testSoundboardSample(sampleId, sampleName) {
+    try {
+        setAnalyzingState(true);
+        const res = await fetch(`/api/samples/${sampleId}`);
+        const blob = await res.blob();
+        const file = new File([blob], sampleId, { type: 'audio/wav' });
+        await sendAudioForAnalysis(file);
+    } catch (err) {
+        console.error("Soundboard test error:", err);
+        setAnalyzingState(false);
+    }
+}
+
+// INFERENCE EXECUTION
+async function sendAudioForAnalysis(file) {
+    setAnalyzingState(true);
+    const formData = new FormData();
+    formData.append('audio', file);
+
+    try {
+        const response = await fetch('/api/analyze-audio', {
+            method: 'POST',
+            body: formData
+        });
+        const data = await response.json();
+
+        if (data.status === 'success') {
+            lastAnalysisResult = data;
+            renderResults(data);
+        } else {
+            alert(`Analysis Error: ${data.message}`);
+        }
+    } catch (err) {
+        console.error("Inference request failed:", err);
+        alert("Failed to communicate with ShieldVoice inference engine.");
+    } finally {
+        setAnalyzingState(false);
+    }
+}
+
+function setAnalyzingState(isAnalyzing) {
+    const badge = document.getElementById('engineStatus');
+    if (isAnalyzing) {
+        badge.innerText = '● INFERENCE COMPUTING...';
+        badge.style.color = '#00f0ff';
+    } else {
+        badge.innerText = 'Engine Ready';
+        badge.style.color = '#9ca3af';
+    }
+}
+
+// TELEMETRY & RESULTS RENDERING
+function renderResults(data) {
+    const risk = data.spoof_risk_percent;
+    const humanConf = data.human_confidence_percent;
+    const isSpoof = data.prediction === 'SPOOF / DEEPFAKE';
+
+    // 1. Radial Gauge
+    const gaugeFill = document.getElementById('gaugeFill');
+    const riskDisplay = document.getElementById('riskScoreDisplay');
+    
+    // Circumference for r=80 is 2 * PI * 80 = ~502.65
+    const circumference = 502.65;
+    const offset = circumference - (circumference * (risk / 100));
+    gaugeFill.style.strokeDashoffset = offset;
+    riskDisplay.innerText = `${risk.toFixed(1)}%`;
+
+    if (risk < 30) {
+        gaugeFill.style.stroke = '#10b981'; // Green
+        riskDisplay.style.color = '#10b981';
+    } else if (risk < 70) {
+        gaugeFill.style.stroke = '#f59e0b'; // Amber
+        riskDisplay.style.color = '#f59e0b';
+    } else {
+        gaugeFill.style.stroke = '#ef4444'; // Red
+        riskDisplay.style.color = '#ef4444';
+    }
+
+    // 2. Verdict Banner
+    const verdictBadge = document.getElementById('verdictBadge');
+    const threatPill = document.getElementById('threatPill');
+
+    verdictBadge.innerText = data.prediction;
+    verdictBadge.className = `verdict-badge ${isSpoof ? 'badge-spoof' : 'badge-human'}`;
+    threatPill.innerText = `THREAT LEVEL: ${data.threat_level}`;
+
+    // 3. Metric boxes
+    document.getElementById('valHumanConf').innerText = `${humanConf.toFixed(1)}%`;
+    document.getElementById('valSpoofRisk').innerText = `${risk.toFixed(1)}%`;
+    document.getElementById('valLatency').innerText = `${data.inference_latency_ms} ms`;
+    document.getElementById('valSampleRate').innerText = `${data.diagnostics.sample_rate_hz || 16000} Hz`;
+
+    // 4. Forensic Breakdown
+    const diag = data.diagnostics;
+    document.getElementById('diagVocoder').innerText = `${diag.vocoder_artifact_density}%`;
+    document.getElementById('barVocoder').style.width = `${diag.vocoder_artifact_density}%`;
+
+    document.getElementById('diagProsody').innerText = `${diag.micro_prosody_organic_score}%`;
+    document.getElementById('barProsody').style.width = `${diag.micro_prosody_organic_score}%`;
+
+    document.getElementById('diagPhase').innerText = `${diag.phase_continuity_index}%`;
+    document.getElementById('barPhase').style.width = `${diag.phase_continuity_index}%`;
+
+    const fluxBadge = document.getElementById('diagFlux');
+    fluxBadge.innerText = diag.spectral_flux_stability;
+    fluxBadge.style.color = isSpoof ? '#ef4444' : '#10b981';
+}
+
+// EXPORT JSON REPORT
+function exportJsonReport() {
+    if (!lastAnalysisResult) {
+        alert("Please analyze an audio clip first before exporting telemetry.");
+        return;
+    }
+    const reportData = {
+        system: "ShieldVoice (SIH26104)",
+        timestamp: new Date().toISOString(),
+        model_backbone: "Wav2Vec2 + AASIST Graph Attention Network",
+        telemetry: lastAnalysisResult
+    };
+
+    const blob = new Blob([JSON.stringify(reportData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `ShieldVoice_Threat_Telemetry_${Date.now()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+}
