@@ -77,15 +77,30 @@ class DeepfakeVoiceDetector:
             logits = self.model(tensor_wave)
             logit_diff = float(logits[0, 1] - logits[0, 0])
 
-        # Calibrated decision score with multi-domain microphone acoustic compensation
-        calibrated_prob = 1.0 / (1.0 + np.exp(-(logit_diff - 9.5) / 1.8))
-        risk_score_percent = float(np.clip(calibrated_prob * 100.0, 0.1, 99.9))
-        human_conf_percent = float(np.clip((1.0 - calibrated_prob) * 100.0, 0.1, 99.9))
+        # Calibrated logit margin decision logic with safe uncertainty abstention
+        # High confidence spoof: margin > 10.5
+        # High confidence bonafide: margin < 3.0
+        # Out-of-distribution channel audio (3.0 <= margin <= 10.5): Safe Abstention
+        if logit_diff > 10.5:
+            calibrated_prob = float(1.0 / (1.0 + np.exp(-(logit_diff - 10.5) / 1.5)))
+            risk_score_percent = float(np.clip(75.0 + calibrated_prob * 24.9, 75.0, 99.9))
+            human_conf_percent = round(100.0 - risk_score_percent, 2)
+            label = "SPOOF / DEEPFAKE"
+            threat_level = "CRITICAL"
+        elif logit_diff < 3.0:
+            calibrated_prob = float(1.0 / (1.0 + np.exp(-(logit_diff - 1.0) / 1.5)))
+            risk_score_percent = float(np.clip(calibrated_prob * 20.0, 0.1, 20.0))
+            human_conf_percent = round(100.0 - risk_score_percent, 2)
+            label = "BONAFIDE / HUMAN"
+            threat_level = "SAFE"
+        else:
+            # Channel variance / Out-of-Distribution boundary -> Safe Abstention
+            risk_score_percent = round(35.0 + ((logit_diff - 3.0) / 7.5) * 30.0, 2)
+            human_conf_percent = round(100.0 - risk_score_percent, 2)
+            label = "UNCERTAIN / SECONDARY VERIFICATION"
+            threat_level = "ADAPTIVE_VERIFY"
 
         latency_ms = (time.perf_counter() - start_time) * 1000.0
-
-        label = "SPOOF / DEEPFAKE" if risk_score_percent >= 50.0 else "BONAFIDE / HUMAN"
-        threat_level = "CRITICAL" if risk_score_percent > 80.0 else ("SUSPICIOUS" if risk_score_percent > 45.0 else "SAFE")
 
         return {
             "prediction": label,

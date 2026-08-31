@@ -732,6 +732,13 @@ body {
     box-shadow: 0 0 25px var(--emerald-glow);
 }
 
+.badge-uncertain {
+    background: rgba(245, 158, 11, 0.15);
+    color: var(--amber);
+    border: 1px solid var(--amber);
+    box-shadow: 0 0 25px var(--amber-glow);
+}
+
 .badge-spoof {
     background: rgba(239, 68, 68, 0.15);
     color: var(--crimson);

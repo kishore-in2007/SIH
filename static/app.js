@@ -435,9 +435,8 @@ function setAnalyzingState(isAnalyzing) {
 
 // TELEMETRY & RESULTS RENDERING
 function renderResults(data) {
-    const risk = data.spoof_risk_percent;
-    const humanConf = data.human_confidence_percent;
     const isSpoof = data.prediction === 'SPOOF / DEEPFAKE';
+    const isUncertain = data.threat_level === 'ADAPTIVE_VERIFY' || data.prediction.includes('UNCERTAIN');
 
     const gaugeFill = document.getElementById('gaugeFill');
     const riskDisplay = document.getElementById('riskScoreDisplay');
@@ -447,22 +446,26 @@ function renderResults(data) {
     gaugeFill.style.strokeDashoffset = offset;
     riskDisplay.innerText = `${risk.toFixed(1)}%`;
 
-    if (risk < 40) {
-        gaugeFill.style.stroke = '#10b981';
-        riskDisplay.style.color = '#10b981';
-    } else if (risk < 70) {
+    if (isSpoof) {
+        gaugeFill.style.stroke = '#ef4444';
+        riskDisplay.style.color = '#ef4444';
+    } else if (isUncertain) {
         gaugeFill.style.stroke = '#f59e0b';
         riskDisplay.style.color = '#f59e0b';
     } else {
-        gaugeFill.style.stroke = '#ef4444';
-        riskDisplay.style.color = '#ef4444';
+        gaugeFill.style.stroke = '#10b981';
+        riskDisplay.style.color = '#10b981';
     }
 
     const verdictBadge = document.getElementById('verdictBadge');
     const threatPill = document.getElementById('threatPill');
 
+    let badgeClass = 'badge-human';
+    if (isSpoof) badgeClass = 'badge-spoof';
+    else if (isUncertain) badgeClass = 'badge-uncertain';
+
     verdictBadge.innerText = data.prediction;
-    verdictBadge.className = `verdict-badge ${isSpoof ? 'badge-spoof' : 'badge-human'}`;
+    verdictBadge.className = `verdict-badge ${badgeClass}`;
     threatPill.innerText = `THREAT LEVEL: ${data.threat_level}`;
 
     document.getElementById('valHumanConf').innerText = `${humanConf.toFixed(1)}%`;
