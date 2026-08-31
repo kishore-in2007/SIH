@@ -23,15 +23,15 @@ wheels/
 .installed.cfg
 *.egg
 
-# PyTorch Checkpoints & Models (Track configs, store heavy weights on Google Drive)
-*.pt
+# PyTorch Checkpoints & Models (Heavy weights tracked via Git LFS)
 *.pth
 *.onnx
 *.bin
 *.safetensors
 checkpoints/
 output/
-saved_models/
+!best_model.pt
+!saved_models/best_model.pt
 
 # Datasets & Large Archives
 *.flac
