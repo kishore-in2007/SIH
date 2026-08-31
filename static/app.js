@@ -435,8 +435,10 @@ function setAnalyzingState(isAnalyzing) {
 
 // TELEMETRY & RESULTS RENDERING
 function renderResults(data) {
+    const risk = Number(data.spoof_risk_percent || 0);
+    const humanConf = Number(data.human_confidence_percent || (100 - risk));
     const isSpoof = data.prediction === 'SPOOF / DEEPFAKE';
-    const isUncertain = data.threat_level === 'ADAPTIVE_VERIFY' || data.prediction.includes('UNCERTAIN');
+    const isUncertain = data.threat_level === 'ADAPTIVE_VERIFY' || (data.prediction && data.prediction.includes('UNCERTAIN'));
 
     const gaugeFill = document.getElementById('gaugeFill');
     const riskDisplay = document.getElementById('riskScoreDisplay');
