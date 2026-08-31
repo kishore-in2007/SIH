@@ -436,6 +436,9 @@ function setAnalyzingState(isAnalyzing) {
 // TELEMETRY & RESULTS RENDERING
 function renderResults(data, isLiveMic = false) {
     const isSpoof = data.prediction === 'SPOOF / DEEPFAKE';
+    const risk = Number(data.spoof_risk_percent || 0);
+    const humanConf = Number(data.human_confidence_percent || (100 - risk));
+    
     const gaugeFill = document.getElementById('gaugeFill');
     const riskDisplay = document.getElementById('riskScoreDisplay');
     const gaugeLabel = document.querySelector('.gauge-label');
@@ -460,8 +463,6 @@ function renderResults(data, isLiveMic = false) {
         document.getElementById('valSpoofRisk').innerText = '0.0%';
     } else {
         // REPLAY SUITE / BENCHMARK PATH
-        const risk = Number(data.spoof_risk_percent || 0);
-        const humanConf = Number(data.human_confidence_percent || (100 - risk));
         const offset = circumference - (circumference * (risk / 100));
         
         gaugeFill.style.strokeDashoffset = offset;
@@ -485,10 +486,8 @@ function renderResults(data, isLiveMic = false) {
         document.getElementById('valSpoofRisk').innerText = `${risk.toFixed(1)}%`;
     }
 
-    document.getElementById('valHumanConf').innerText = `${humanConf.toFixed(1)}%`;
-    document.getElementById('valSpoofRisk').innerText = `${risk.toFixed(1)}%`;
-    document.getElementById('valLatency').innerText = `${data.inference_latency_ms} ms`;
-    document.getElementById('valSampleRate').innerText = `${data.diagnostics.sample_rate_hz || 16000} Hz`;
+    document.getElementById('valLatency').innerText = `${data.inference_latency_ms || 0} ms`;
+    document.getElementById('valSampleRate').innerText = `${data.diagnostics ? (data.diagnostics.sample_rate_hz || 16000) : 16000} Hz`;
 
     const diag = data.diagnostics;
     document.getElementById('diagVocoder').innerText = `${diag.vocoder_artifact_density}%`;
