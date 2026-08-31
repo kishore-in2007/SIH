@@ -53,3 +53,7 @@ Thumbs.db
 *.log
 
 .tools/
+final_model_download/
+final_trained_model/
+trained_artifacts/
+saved_models/

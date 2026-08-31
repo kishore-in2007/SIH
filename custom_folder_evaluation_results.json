@@ -1,0 +1,146 @@
+[
+  {
+    "file_name": "DEMO_USE_ONLY_genuine.wav",
+    "file_path": "C:\\Users\\sakth\\Downloads\\SIH\\New folder\\DEMO_USE_ONLY_genuine.wav",
+    "verdict": "SPOOF / DEEPFAKE",
+    "deepfake_risk_percent": 100.0,
+    "human_confidence_percent": 0.0,
+    "threat_level": "CRITICAL",
+    "latency_ms": 4265.8
+  },
+  {
+    "file_name": "genuine_En-us-article.ogg.wav",
+    "file_path": "C:\\Users\\sakth\\Downloads\\SIH\\New folder\\genuine_En-us-article.ogg.wav",
+    "verdict": "SPOOF / DEEPFAKE",
+    "deepfake_risk_percent": 76.92,
+    "human_confidence_percent": 23.08,
+    "threat_level": "SUSPICIOUS",
+    "latency_ms": 359.28
+  },
+  {
+    "file_name": "genuine_En-us-speech.ogg.wav",
+    "file_path": "C:\\Users\\sakth\\Downloads\\SIH\\New folder\\genuine_En-us-speech.ogg.wav",
+    "verdict": "BONAFIDE / HUMAN",
+    "deepfake_risk_percent": 4.57,
+    "human_confidence_percent": 95.43,
+    "threat_level": "SAFE",
+    "latency_ms": 379.31
+  },
+  {
+    "file_name": "genuine_En-us-welcome.ogg.wav",
+    "file_path": "C:\\Users\\sakth\\Downloads\\SIH\\New folder\\genuine_En-us-welcome.ogg.wav",
+    "verdict": "BONAFIDE / HUMAN",
+    "deepfake_risk_percent": 46.96,
+    "human_confidence_percent": 53.04,
+    "threat_level": "SUSPICIOUS",
+    "latency_ms": 375.48
+  },
+  {
+    "file_name": "genuine_archival_gabriel_costa.wav",
+    "file_path": "C:\\Users\\sakth\\Downloads\\SIH\\New folder\\genuine_archival_gabriel_costa.wav",
+    "verdict": "BONAFIDE / HUMAN",
+    "deepfake_risk_percent": 35.65,
+    "human_confidence_percent": 64.35,
+    "threat_level": "SAFE",
+    "latency_ms": 402.31
+  },
+  {
+    "file_name": "genuine_archival_sulabh_samachar.wav",
+    "file_path": "C:\\Users\\sakth\\Downloads\\SIH\\New folder\\genuine_archival_sulabh_samachar.wav",
+    "verdict": "SPOOF / DEEPFAKE",
+    "deepfake_risk_percent": 97.24,
+    "human_confidence_percent": 2.76,
+    "threat_level": "CRITICAL",
+    "latency_ms": 400.89
+  },
+  {
+    "file_name": "genuine_archival_william_hanna.wav",
+    "file_path": "C:\\Users\\sakth\\Downloads\\SIH\\New folder\\genuine_archival_william_hanna.wav",
+    "verdict": "SPOOF / DEEPFAKE",
+    "deepfake_risk_percent": 92.51,
+    "human_confidence_percent": 7.49,
+    "threat_level": "CRITICAL",
+    "latency_ms": 393.04
+  },
+  {
+    "file_name": "genuine_conversation_speaker2.wav",
+    "file_path": "C:\\Users\\sakth\\Downloads\\SIH\\New folder\\genuine_conversation_speaker2.wav",
+    "verdict": "SPOOF / DEEPFAKE",
+    "deepfake_risk_percent": 100.0,
+    "human_confidence_percent": 0.0,
+    "threat_level": "CRITICAL",
+    "latency_ms": 373.22
+  },
+  {
+    "file_name": "genuine_human_1.wav",
+    "file_path": "C:\\Users\\sakth\\Downloads\\SIH\\New folder\\genuine_human_1.wav",
+    "verdict": "BONAFIDE / HUMAN",
+    "deepfake_risk_percent": 4.57,
+    "human_confidence_percent": 95.43,
+    "threat_level": "SAFE",
+    "latency_ms": 372.79
+  },
+  {
+    "file_name": "genuine_human_long.wav",
+    "file_path": "C:\\Users\\sakth\\Downloads\\SIH\\New folder\\genuine_human_long.wav",
+    "verdict": "SPOOF / DEEPFAKE",
+    "deepfake_risk_percent": 100.0,
+    "human_confidence_percent": 0.0,
+    "threat_level": "CRITICAL",
+    "latency_ms": 411.17
+  },
+  {
+    "file_name": "live_mic_captured_dump1.wav",
+    "file_path": "C:\\Users\\sakth\\Downloads\\SIH\\New folder\\live_mic_captured_dump1.wav",
+    "verdict": "SPOOF / DEEPFAKE",
+    "deepfake_risk_percent": 99.87,
+    "human_confidence_percent": 0.13,
+    "threat_level": "CRITICAL",
+    "latency_ms": 357.14
+  },
+  {
+    "file_name": "live_mic_captured_dump2.wav",
+    "file_path": "C:\\Users\\sakth\\Downloads\\SIH\\New folder\\live_mic_captured_dump2.wav",
+    "verdict": "SPOOF / DEEPFAKE",
+    "deepfake_risk_percent": 93.07,
+    "human_confidence_percent": 6.93,
+    "threat_level": "CRITICAL",
+    "latency_ms": 359.2
+  },
+  {
+    "file_name": "live_mic_captured_dump3.wav",
+    "file_path": "C:\\Users\\sakth\\Downloads\\SIH\\New folder\\live_mic_captured_dump3.wav",
+    "verdict": "SPOOF / DEEPFAKE",
+    "deepfake_risk_percent": 99.93,
+    "human_confidence_percent": 0.07,
+    "threat_level": "CRITICAL",
+    "latency_ms": 352.8
+  },
+  {
+    "file_name": "synthetic_clone_1.wav",
+    "file_path": "C:\\Users\\sakth\\Downloads\\SIH\\New folder\\synthetic_clone_1.wav",
+    "verdict": "SPOOF / DEEPFAKE",
+    "deepfake_risk_percent": 100.0,
+    "human_confidence_percent": 0.0,
+    "threat_level": "CRITICAL",
+    "latency_ms": 376.48
+  },
+  {
+    "file_name": "synthetic_clone_2.wav",
+    "file_path": "C:\\Users\\sakth\\Downloads\\SIH\\New folder\\synthetic_clone_2.wav",
+    "verdict": "SPOOF / DEEPFAKE",
+    "deepfake_risk_percent": 100.0,
+    "human_confidence_percent": 0.0,
+    "threat_level": "CRITICAL",
+    "latency_ms": 400.58
+  },
+  {
+    "file_name": "synthetic_clone_full_fraud.wav",
+    "file_path": "C:\\Users\\sakth\\Downloads\\SIH\\New folder\\synthetic_clone_full_fraud.wav",
+    "verdict": "SPOOF / DEEPFAKE",
+    "deepfake_risk_percent": 100.0,
+    "human_confidence_percent": 0.0,
+    "threat_level": "CRITICAL",
+    "latency_ms": 376.53
+  }
+]
