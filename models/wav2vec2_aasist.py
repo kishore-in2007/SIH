@@ -55,10 +55,16 @@ class Wav2Vec2AASIST(nn.Module):
         # Load Pretrained Wav2Vec2 backbone
         try:
             print(f"Loading SSL Front-End: {ssl_model_name}")
-            self.ssl_model = Wav2Vec2Model.from_pretrained(ssl_model_name)
+            try:
+                self.ssl_model = Wav2Vec2Model.from_pretrained(ssl_model_name, use_safetensors=True)
+            except Exception:
+                self.ssl_model = Wav2Vec2Model.from_pretrained(ssl_model_name)
         except Exception as e:
             print(f"Warning: Failed to load {ssl_model_name} ({e}). Falling back to {fallback_model_name}")
-            self.ssl_model = Wav2Vec2Model.from_pretrained(fallback_model_name)
+            try:
+                self.ssl_model = Wav2Vec2Model.from_pretrained(fallback_model_name, use_safetensors=True)
+            except Exception:
+                self.ssl_model = Wav2Vec2Model.from_pretrained(fallback_model_name)
 
         ssl_hidden_size = self.ssl_model.config.hidden_size
 
