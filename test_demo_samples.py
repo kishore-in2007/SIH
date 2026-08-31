@@ -1,6 +1,6 @@
 """
 ShieldVoice (SIH26104) - Model Validation & Demonstration Suite
-Downloads the trained model from Kaggle and executes live inference on genuine vs synthetic audio.
+Executes live inference on genuine vs synthetic audio using the trained weights.
 """
 import os
 import sys
@@ -9,25 +9,22 @@ import time
 import subprocess
 import numpy as np
 
-def fetch_kaggle_weights(output_dir="./saved_models"):
+def find_best_checkpoint():
     """
-    Downloads the trained model weights from Kaggle using Kaggle API.
+    Searches for the trained model checkpoint across common paths.
     """
-    os.makedirs(output_dir, exist_ok=True)
-    print("--- Fetching Model Weights from Kaggle ---")
-    
-    cmd = [
-        sys.executable, "-m", "kaggle", "kernels", "output",
-        "kishoretheone/shieldvoice-deepfake-voice-training",
-        "-p", output_dir
+    candidates = [
+        "/kaggle/working/best_model.pt",
+        "./best_model.pt",
+        "./saved_models/best_model.pt",
+        "./trained_artifacts/best_model.pt",
+        "./final_trained_model/best_model.pt",
+        "../saved_models/best_model.pt"
     ]
-    try:
-        subprocess.run(cmd, check=True)
-        print(f"Model artifacts downloaded to {output_dir}")
-        return True
-    except Exception as e:
-        print(f"Error fetching model weights from Kaggle: {e}")
-        return False
+    for c in candidates:
+        if os.path.exists(c):
+            return c
+    return None
 
 def generate_synthetic_and_human_test_benchmarks():
     """
@@ -38,10 +35,11 @@ def generate_synthetic_and_human_test_benchmarks():
     print("\n--- Running Deepfake Voice Detection Benchmark Suite ---")
     from inference import DeepfakeVoiceDetector
     
-    checkpoint = "./saved_models/best_model.pt"
-    if not os.path.exists(checkpoint):
-        checkpoint = None
-        print("Note: Running with baseline architecture while weights finalize.")
+    checkpoint = find_best_checkpoint()
+    if checkpoint:
+        print(f"Loaded trained model weights from: {checkpoint}")
+    else:
+        print("Note: Checkpoint not found, running with baseline architecture.")
 
     detector = DeepfakeVoiceDetector(checkpoint_path=checkpoint)
 
@@ -78,12 +76,11 @@ def generate_synthetic_and_human_test_benchmarks():
     ]
 
     results = []
-    print("\n" + "="*80)
+    print("\n" + "="*85)
     print(f"{'Test Sample':<50} | {'Expected':<15} | {'Risk Score':<12} | {'Verdict'}")
-    print("="*80)
+    print("="*85)
 
     for case in test_cases:
-        # Generate representative 4-second audio signal @ 16kHz
         sr = 16000
         duration = 4.0
         t = np.linspace(0, duration, int(sr * duration), endpoint=False)
@@ -97,7 +94,6 @@ def generate_synthetic_and_human_test_benchmarks():
         else:
             # Synthetic / Cloned audio: artificial high-frequency phase cuts & vocoder artifact peaks
             signal = np.sin(2 * np.pi * case["frequency_hz"] * t) + 0.8 * np.sin(2 * np.pi * 3200 * t)
-            # Add synthetic phase step discontinuities
             for cut in range(1, 8):
                 signal[int(cut * 0.5 * sr):] += 0.3 * np.cos(2 * np.pi * 4800 * t[:len(signal) - int(cut * 0.5 * sr)])
             audio = signal.astype(np.float32)
@@ -115,7 +111,7 @@ def generate_synthetic_and_human_test_benchmarks():
             "latency_ms": res["inference_latency_ms"]
         })
 
-    print("="*80)
+    print("="*85)
     return results
 
 if __name__ == "__main__":
