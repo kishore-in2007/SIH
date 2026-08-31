@@ -75,24 +75,26 @@ class DeepfakeVoiceDetector:
 
         with torch.no_grad():
             logits = self.model(tensor_wave)
-            probabilities = torch.softmax(logits, dim=1).squeeze(0).cpu().numpy()
+            logit_diff = float(logits[0, 1] - logits[0, 0])
 
-        bonafide_prob = float(probabilities[0])
-        spoof_prob = float(probabilities[1])
-        risk_score_percent = spoof_prob * 100.0
+        # Calibrated decision score using optimal EER logit boundary
+        calibrated_prob = 1.0 / (1.0 + np.exp(-(logit_diff - 4.5) / 1.8))
+        risk_score_percent = float(np.clip(calibrated_prob * 100.0, 0.1, 99.9))
+        human_conf_percent = float(np.clip((1.0 - calibrated_prob) * 100.0, 0.1, 99.9))
 
         latency_ms = (time.perf_counter() - start_time) * 1000.0
 
         label = "SPOOF / DEEPFAKE" if risk_score_percent >= 50.0 else "BONAFIDE / HUMAN"
-        threat_level = "CRITICAL" if risk_score_percent > 85.0 else ("SUSPICIOUS" if risk_score_percent > 45.0 else "SAFE")
+        threat_level = "CRITICAL" if risk_score_percent > 80.0 else ("SUSPICIOUS" if risk_score_percent > 45.0 else "SAFE")
 
         return {
             "prediction": label,
             "threat_level": threat_level,
             "spoof_risk_percent": round(risk_score_percent, 2),
-            "human_confidence_percent": round(bonafide_prob * 100.0, 2),
+            "human_confidence_percent": round(human_conf_percent, 2),
             "inference_latency_ms": round(latency_ms, 2),
-            "device": str(self.device)
+            "device": str(self.device),
+            "logit_margin": round(logit_diff, 2)
         }
 
 def main():
