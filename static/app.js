@@ -1,6 +1,6 @@
 /**
  * ShieldVoice (SIH26104) - Live Interactive Testing Studio Frontend Logic
- * Captures pure uncompressed 16kHz 16-bit Linear PCM WAV audio directly to avoid lossy WebM/Opus codec artifacts.
+ * Implements sample-accurate 16kHz downsampling and PCM encoding to eliminate browser sample-rate and codec distortion.
  */
 
 // State
@@ -73,7 +73,31 @@ function initVisualizerCanvas() {
     drawIdle();
 }
 
-// PURE 16kHz PCM WAV MICROPHONE CAPTURE (NO OPUS/WEBM ARTIFACTS)
+// SAMPLE-ACCURATE DOWNSAMPLER TO 16kHz
+function downsampleBuffer(buffer, inputSampleRate, outputSampleRate = 16000) {
+    if (inputSampleRate === outputSampleRate) {
+        return buffer;
+    }
+    const sampleRateRatio = inputSampleRate / outputSampleRate;
+    const newLength = Math.round(buffer.length / sampleRateRatio);
+    const result = new Float32Array(newLength);
+    let offsetResult = 0;
+    let offsetBuffer = 0;
+    while (offsetResult < result.length) {
+        const nextOffsetBuffer = Math.round((offsetResult + 1) * sampleRateRatio);
+        let accum = 0, count = 0;
+        for (let i = offsetBuffer; i < nextOffsetBuffer && i < buffer.length; i++) {
+            accum += buffer[i];
+            count++;
+        }
+        result[offsetResult] = count > 0 ? (accum / count) : 0;
+        offsetResult++;
+        offsetBuffer = nextOffsetBuffer;
+    }
+    return result;
+}
+
+// MICROPHONE RECORDING IN PURE 16kHz PCM
 async function toggleRecording() {
     const btnRecord = document.getElementById('btnRecord');
     const btnRecordText = document.getElementById('btnRecordText');
@@ -82,12 +106,11 @@ async function toggleRecording() {
     const playback = document.getElementById('recordedAudioPlayback');
 
     if (!isRecording) {
-        // START RECORDING IN PURE LINEAR PCM
         try {
             micStream = await navigator.mediaDevices.getUserMedia({
                 audio: {
                     channelCount: 1,
-                    echoCancellation: true,
+                    echoCancellation: false,
                     noiseSuppression: false,
                     autoGainControl: true
                 }
@@ -96,19 +119,17 @@ async function toggleRecording() {
             audioSamples = [];
             
             const AudioCtx = window.AudioContext || window.webkitAudioContext;
-            audioContext = new AudioCtx({ sampleRate: 16000 });
+            audioContext = new AudioCtx();
             
             micSource = audioContext.createMediaStreamSource(micStream);
             analyser = audioContext.createAnalyser();
             analyser.fftSize = 256;
             
-            // ScriptProcessor to capture raw uncompressed Float32 PCM samples
             scriptProcessor = audioContext.createScriptProcessor(4096, 1, 1);
             
             scriptProcessor.onaudioprocess = (e) => {
                 if (!isRecording) return;
                 const inputData = e.inputBuffer.getChannelData(0);
-                // Copy Float32 buffer
                 audioSamples.push(new Float32Array(inputData));
             };
 
@@ -118,29 +139,26 @@ async function toggleRecording() {
 
             isRecording = true;
 
-            // UI updates
             btnRecord.classList.add('recording');
             btnRecordText.innerText = 'Stop Recording';
-            micStatus.innerText = '● LIVE RECORDING (16kHz Studio PCM)...';
+            micStatus.innerText = '● RECORDING LIVE (Please speak naturally for 3-5 sec)...';
             micStatus.style.color = '#ef4444';
             btnAnalyze.disabled = true;
 
-            // Timer
             recordingSeconds = 0;
             updateTimerDisplay();
             recordingInterval = setInterval(() => {
                 recordingSeconds++;
                 updateTimerDisplay();
-                if (recordingSeconds >= 8) toggleRecording(); // Standardize to ~4-8s
+                if (recordingSeconds >= 8) toggleRecording();
             }, 1000);
 
             drawLiveWaveform();
         } catch (err) {
             console.error("Microphone access error:", err);
-            alert("Could not access microphone. Please ensure microphone permissions are granted in your browser.");
+            alert("Could not access microphone. Please check browser permissions.");
         }
     } else {
-        // STOP RECORDING & ENCODE UNCOMPRESSED WAV
         isRecording = false;
         clearInterval(recordingInterval);
 
@@ -148,14 +166,10 @@ async function toggleRecording() {
             scriptProcessor.disconnect();
             scriptProcessor.onaudioprocess = null;
         }
-        if (micSource) {
-            micSource.disconnect();
-        }
-        if (micStream) {
-            micStream.getTracks().forEach(track => track.stop());
-        }
+        if (micSource) micSource.disconnect();
+        if (micStream) micStream.getTracks().forEach(track => track.stop());
 
-        // Flatten all Float32 chunks
+        // Merge raw chunks
         let totalSamplesCount = 0;
         for (let chunk of audioSamples) totalSamplesCount += chunk.length;
         
@@ -166,9 +180,12 @@ async function toggleRecording() {
             offset += chunk.length;
         }
 
-        // Resample to 16000Hz if needed and encode to 16-bit PCM RIFF WAV
-        const sampleRate = audioContext ? audioContext.sampleRate : 16000;
-        recordedBlob = encodeWAV(mergedSamples, sampleRate);
+        // Accurate Resampling to 16,000 Hz
+        const nativeSampleRate = audioContext ? audioContext.sampleRate : 44100;
+        const resampled16k = downsampleBuffer(mergedSamples, nativeSampleRate, 16000);
+
+        // Encode to standard 16kHz 16-bit PCM WAV
+        recordedBlob = encodeWAV(resampled16k, 16000);
 
         playback.src = URL.createObjectURL(recordedBlob);
         playback.classList.remove('hidden');
@@ -176,7 +193,7 @@ async function toggleRecording() {
 
         btnRecord.classList.remove('recording');
         btnRecordText.innerText = 'Record Again';
-        micStatus.innerText = '✓ Studio Audio Ready For Verification';
+        micStatus.innerText = `✓ 16kHz Studio Audio Ready (${(resampled16k.length / 16000).toFixed(1)}s)`;
         micStatus.style.color = '#10b981';
     }
 }
@@ -198,34 +215,20 @@ function encodeWAV(samples, sampleRate) {
         }
     }
 
-    /* RIFF identifier */
     writeString(view, 0, 'RIFF');
-    /* file length */
     view.setUint32(4, 36 + samples.length * 2, true);
-    /* RIFF type */
     writeString(view, 8, 'WAVE');
-    /* format chunk identifier */
     writeString(view, 12, 'fmt ');
-    /* format chunk length */
     view.setUint32(16, 16, true);
-    /* sample format (1 = PCM) */
-    view.setUint16(20, 1, true);
-    /* channel count (1 = mono) */
-    view.setUint16(22, 1, true);
-    /* sample rate */
+    view.setUint16(20, 1, true); // PCM format
+    view.setUint16(22, 1, true); // Mono
     view.setUint32(24, sampleRate, true);
-    /* byte rate (sampleRate * 1 * 2) */
     view.setUint32(28, sampleRate * 2, true);
-    /* block align */
     view.setUint16(32, 2, true);
-    /* bits per sample */
     view.setUint16(34, 16, true);
-    /* data chunk identifier */
     writeString(view, 36, 'data');
-    /* data chunk length */
     view.setUint32(40, samples.length * 2, true);
 
-    // Convert Float32 to Int16
     let byteOffset = 44;
     for (let i = 0; i < samples.length; i++, byteOffset += 2) {
         let s = Math.max(-1, Math.min(1, samples[i]));
@@ -436,7 +439,6 @@ function renderResults(data) {
     const humanConf = data.human_confidence_percent;
     const isSpoof = data.prediction === 'SPOOF / DEEPFAKE';
 
-    // 1. Radial Gauge
     const gaugeFill = document.getElementById('gaugeFill');
     const riskDisplay = document.getElementById('riskScoreDisplay');
     
@@ -446,17 +448,16 @@ function renderResults(data) {
     riskDisplay.innerText = `${risk.toFixed(1)}%`;
 
     if (risk < 40) {
-        gaugeFill.style.stroke = '#10b981'; // Green
+        gaugeFill.style.stroke = '#10b981';
         riskDisplay.style.color = '#10b981';
     } else if (risk < 70) {
-        gaugeFill.style.stroke = '#f59e0b'; // Amber
+        gaugeFill.style.stroke = '#f59e0b';
         riskDisplay.style.color = '#f59e0b';
     } else {
-        gaugeFill.style.stroke = '#ef4444'; // Red
+        gaugeFill.style.stroke = '#ef4444';
         riskDisplay.style.color = '#ef4444';
     }
 
-    // 2. Verdict Banner
     const verdictBadge = document.getElementById('verdictBadge');
     const threatPill = document.getElementById('threatPill');
 
@@ -464,13 +465,11 @@ function renderResults(data) {
     verdictBadge.className = `verdict-badge ${isSpoof ? 'badge-spoof' : 'badge-human'}`;
     threatPill.innerText = `THREAT LEVEL: ${data.threat_level}`;
 
-    // 3. Metric boxes
     document.getElementById('valHumanConf').innerText = `${humanConf.toFixed(1)}%`;
     document.getElementById('valSpoofRisk').innerText = `${risk.toFixed(1)}%`;
     document.getElementById('valLatency').innerText = `${data.inference_latency_ms} ms`;
     document.getElementById('valSampleRate').innerText = `${data.diagnostics.sample_rate_hz || 16000} Hz`;
 
-    // 4. Forensic Breakdown
     const diag = data.diagnostics;
     document.getElementById('diagVocoder').innerText = `${diag.vocoder_artifact_density}%`;
     document.getElementById('barVocoder').style.width = `${diag.vocoder_artifact_density}%`;
@@ -486,7 +485,6 @@ function renderResults(data) {
     fluxBadge.style.color = isSpoof ? '#ef4444' : '#10b981';
 }
 
-// EXPORT JSON REPORT
 function exportJsonReport() {
     if (!lastAnalysisResult) {
         alert("Please analyze an audio clip first before exporting telemetry.");

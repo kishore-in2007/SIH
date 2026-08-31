@@ -43,8 +43,8 @@ def load_and_standardize_audio(file_path: str, target_sr: int = TARGET_SAMPLE_RA
 
         length = len(audio)
         if length < max_samples:
-            repeat_factor = int(np.ceil(max_samples / max(length, 1)))
-            audio = np.tile(audio, repeat_factor)[:max_samples]
+            pad_needed = max_samples - length
+            audio = np.pad(audio, (0, pad_needed), mode='reflect')
         elif length > max_samples:
             if is_train:
                 max_offset = length - max_samples
